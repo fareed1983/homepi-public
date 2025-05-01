@@ -1,0 +1,60 @@
+name: CI/CD for Raspberry Pi
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+    env:
+      PI_HOST: ${{ vars.PI_HOST }}
+      PI_USER: ${{ secrets.PI_USER }}
+      PI_SSH_PORT: ${{ secrets.PI_SSH_PORT }}
+      TF_TOKEN_app_terraform_io: ${{ secrets.TERRAFORM_CLOUD_TOKEN }}
+
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+        
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+  
+      - name: Add Pi host key to known_hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -p $PI_SSH_PORT $PI_HOST  >> ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Install Ansible
+        run: |
+          sudo apt-get update
+          sudo apt-get install ansible -y
+
+      - name: Run Ansible Playbook
+        run: |
+          ansible-playbook \
+            -i ansible/inventory.yml \
+            ansible/playbooks/setup_pi.yml
+
+      - name: Update server IP in kubeconfig and set path
+        run: |
+          sed -i "s|127.0.0.1|$PI_HOST|g" ./terraform/k3s.yaml
+          echo "KUBE_CONFIG_PATH=$(pwd)/terraform/k3s.yaml" >> $GITHUB_ENV
+      
+      - name: Install Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        working-directory: ./terraform
+        run: terraform init
+
+      - name: Terraform Plan
+        working-directory: ./terraform
+        run: terraform plan
+      
+      - name: Terraform Apply
+        working-directory: ./terraform
+        run: terraform apply -auto-approve

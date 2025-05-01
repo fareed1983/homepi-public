@@ -1,0 +1,7 @@
+---
+raspberrypi:
+  hosts:
+    pi:
+      ansible_host: "{{ lookup('env','PI_HOST') }}"
+      ansible_user: "{{ lookup('env','PI_USER') }}"
+      ansible_port: "{{ lookup('env','PI_SSH_PORT') }}"
